@@ -29,9 +29,8 @@ func LoginController(c *fiber.Ctx) error {
 	}
 	errLogin := db.DB.Where("email = ?", reqUser.Email).First(&user).Error
 	if errLogin != nil {
-		c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-			"Message": "No Data Found",
-			"Error":   errLogin.Error(),
+		return c.Status(http.StatusUnauthorized).JSON(fiber.Map{
+			"Message": "Unauthorized",
 		})
 	}
 	pass := utils.CheckPasswordHash(reqUser.Password, user.Password)
@@ -45,12 +44,19 @@ func LoginController(c *fiber.Ctx) error {
 	claims["name"] = user.Name
 	claims["role"] = user.Role
 	claims["exp"] = time.Now().Add(time.Minute * 2).Unix()
-	token, errToken :=
+	token, errToken := GenerateJJWTToken(&claims)
+	if errToken != nil {
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
+			"Message": "Cannot Generate Token",
+			"Error":   errToken.Error(),
+		})
+	}
+	return c.Status(http.StatusOK).JSON(token)
 }
 
 func RegisterController(ctx *fiber.Ctx) error {
 	reqUser := new(request.UserRequest)
-	err := ctx.BodyParser(&reqUser)
+	err := ctx.BodyParser(reqUser)
 	if err != nil {
 		return ctx.Status(http.StatusBadRequest).JSON(fiber.Map{
 			"Message": "Bad Request",
@@ -80,5 +86,39 @@ func RegisterController(ctx *fiber.Ctx) error {
 	}
 	return ctx.Status(http.StatusCreated).JSON(fiber.Map{
 		"Message": "Register Success",
+	})
+}
+
+func RefreshController(ctx *fiber.Ctx) error {
+	tokenValidation := ctx.Locals("token").(*jwt.Token)
+	claims := tokenValidation.Claims.(jwt.MapClaims)
+	claims["exp"] = time.Now().Add(time.Minute * 2).Unix()
+	newToken, errToken := GenerateJJWTToken(&claims)
+	if errToken != nil {
+		return ctx.Status(http.StatusInternalServerError).JSON(fiber.Map{
+			"Message": "Cannot Generate Token",
+			"Error":   errToken.Error(),
+		})
+	}
+	return ctx.Status(http.StatusOK).JSON(fiber.Map{
+		"Message": "Refresh Token Success",
+		"Token":   newToken,
+	})
+}
+
+func LogoutController(ctx *fiber.Ctx) error {
+	// Logout Logic
+	makeTokenInvalid := ctx.Locals("token").(*jwt.Token)
+	claims := makeTokenInvalid.Claims.(jwt.MapClaims)
+	claims["exp"] = time.Now().Add(time.Minute * -2).Unix()
+	_, errToken := GenerateJJWTToken(&claims)
+	if errToken != nil {
+		return ctx.Status(http.StatusInternalServerError).JSON(fiber.Map{
+			"Message": "Cannot Generate Token",
+			"Error":   errToken.Error(),
+		})
+	}
+	return ctx.Status(http.StatusOK).JSON(fiber.Map{
+		"Message": "Logout Success",
 	})
 }

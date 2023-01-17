@@ -16,5 +16,8 @@ func main() {
 	r := fiber.New()
 	api.AuthRoutes(r)
 	api.UserRoutes(r)
-	r.Listen(":3000")
+	err := r.Listen(":3000")
+	if err != nil {
+		panic(err)
+	}
 }
